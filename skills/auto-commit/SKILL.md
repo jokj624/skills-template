@@ -1,6 +1,8 @@
 ---
 name: auto-commit
-description: Automatically generate meaningful commit messages in Conventional Commits format (with scope) and create git commits. Use this skill when the user explicitly requests to commit changes (e.g., "/commit", "커밋해줘", "create a commit", "commit these changes"). This skill analyzes code changes, generates descriptive commit messages following the pattern "type(scope): description", and handles the full commit workflow including file selection and optional push.
+description: |
+  Automatically generate meaningful commit messages in Conventional Commits format (with scope)
+  and create git commits. Use this skill when the user explicitly requests to commit changes.
 ---
 
 # Auto Commit
