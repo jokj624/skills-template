@@ -105,9 +105,15 @@ db.query(query, [userId]);
 
 ### 5. Create Draft Review on PR
 
-Immediately create a draft review on the PR using GitHub API. Do NOT present review to user first - post directly as draft.
+Immediately create a draft review on the PR using GitHub MCP tools. Do NOT present review to user first - post directly as draft.
 
-**Refer to** [pr-comment-guide.md](references/pr-comment-guide.md) for detailed GitHub API usage.
+**Refer to** [pr-comment-guide.md](references/pr-comment-guide.md) for detailed GitHub MCP tool usage.
+
+#### Prerequisites
+
+Use ToolSearch to load the required GitHub MCP tools:
+- `mcp__github__pull_request_review_write` - For creating/submitting reviews
+- `mcp__github__add_comment_to_pending_review` - For adding inline comments to pending review
 
 #### Step-by-step Process
 
@@ -115,48 +121,69 @@ Immediately create a draft review on the PR using GitHub API. Do NOT present rev
 ```bash
 PR_NUMBER=$(gh pr view --json number -q .number)
 COMMIT_SHA=$(gh pr view $PR_NUMBER --json commits --jq '.commits[-1].oid')
-REPO_INFO=$(gh repo view --json nameWithOwner -q .nameWithOwner)
 ```
 
-2. **Create JSON payload for draft review:**
-Create a JSON file with the following structure:
-```json
-{
-  "body": "## 전체 리뷰 요약\n\n[summary content]",
-  "commit_id": "commit_sha",
-  "comments": [
-    {
-      "path": "src/server/service/user.js",
-      "line": 42,
-      "body": "#### p2; 적극적으로 고려해주세요.\n\n[review content]"
-    },
-    {
-      "path": "src/server/service/user.js",
-      "start_line": 10,
-      "line": 15,
-      "body": "#### p3; 웬만하면 반영해주세요.\n\n[review content]"
-    }
-  ]
-}
+Extract owner and repo from remote URL:
+```bash
+git remote get-url origin | sed -E 's/.*[:/]([^/]+)\/([^/.]+)(\.git)?$/\1 \2/'
+```
+
+2. **Create a pending review:**
+Use `mcp__github__pull_request_review_write` with method `create` WITHOUT the `event` parameter to create a pending (draft) review:
+
+```
+mcp__github__pull_request_review_write
+  method: "create"
+  owner: "organization-name"
+  repo: "repository-name"
+  pullNumber: <pr-number>
+  body: "## 전체 리뷰 요약\n\n[summary content]"
+  commitID: "<commit-sha>"
+```
+
+**Important:** Omit the `event` parameter to create a pending review. If `event` is provided, the review is submitted immediately.
+
+3. **Add inline comments to the pending review:**
+For each review comment, use `mcp__github__add_comment_to_pending_review`:
+
+**Single-line comment:**
+```
+mcp__github__add_comment_to_pending_review
+  owner: "organization-name"
+  repo: "repository-name"
+  pullNumber: <pr-number>
+  path: "src/server/service/user.js"
+  body: "#### p2; 적극적으로 고려해주세요.\n\n[review content]"
+  line: 42
+  side: "RIGHT"
+  subjectType: "LINE"
+```
+
+**Multi-line comment:**
+```
+mcp__github__add_comment_to_pending_review
+  owner: "organization-name"
+  repo: "repository-name"
+  pullNumber: <pr-number>
+  path: "src/server/service/user.js"
+  body: "#### p3; 웬만하면 반영해주세요.\n\n[review content]"
+  startLine: 10
+  line: 15
+  side: "RIGHT"
+  startSide: "RIGHT"
+  subjectType: "LINE"
 ```
 
 **Important Notes:**
-- Do NOT include comments for deleted files - they will cause 422 errors
-- Use `line` for single-line comments
-- Use `start_line` and `line` for multi-line comments
+- Do NOT include comments for deleted files - they will cause errors
+- Use `side: "RIGHT"` for comments on new/modified code (most common)
+- Use `side: "LEFT"` for comments on deleted code
+- Use `subjectType: "LINE"` for line-specific comments
+- Use `subjectType: "FILE"` for file-level comments (no line number needed)
 - All review body text should include the level template at the start
 
-3. **Post draft review via GitHub API:**
-```bash
-gh api \
-  --method POST \
-  -H "Accept: application/vnd.github+json" \
-  -H "X-GitHub-Api-Version: 2022-11-28" \
-  /repos/$REPO_INFO/pulls/$PR_NUMBER/reviews \
-  --input review.json
-```
-
-This creates a PENDING (draft) review that appears on the PR but is not yet submitted.
+4. **The review remains as PENDING (draft):**
+The pending review will appear on the PR page. The author can review the comments and click "Submit review" to publish it.
 
 ### 6. Provide PR Review Link
 
@@ -171,32 +198,37 @@ After successfully creating the draft review:
 ## Important Notes
 
 1. **Always read CLAUDE.md first** if it exists in the project to understand project-specific guidelines
-2. **Post directly as draft**: Do NOT show review to user first - create draft review immediately on PR
-3. **Be thorough but focused**: Don't nitpick minor issues if there are major problems
-4. **Prioritize correctly**: p1 issues should be truly critical, don't overuse
-5. **Be respectful**: Remember reviews are in Korean and will be read by Korean developers
-6. **Consider context**: Some "violations" might be intentional or necessary
-7. **Test knowledge**: Understand testing is required for backend (services, models, controllers) but guidelines differ for frontend
-8. **Handle deleted files**: Do NOT create inline comments for deleted files as they cause API errors
-9. **Output format**: Only show concise summary with PR link - user can see full review on GitHub
+2. **Load MCP tools first**: Use ToolSearch to load `mcp__github__pull_request_review_write` and `mcp__github__add_comment_to_pending_review` before creating reviews
+3. **Post directly as draft**: Do NOT show review to user first - create draft review immediately on PR
+4. **Create pending review first**: Must create a pending review before adding inline comments
+5. **Be thorough but focused**: Don't nitpick minor issues if there are major problems
+6. **Prioritize correctly**: p1 issues should be truly critical, don't overuse
+7. **Be respectful**: Remember reviews are in Korean and will be read by Korean developers
+8. **Consider context**: Some "violations" might be intentional or necessary
+9. **Test knowledge**: Understand testing is required for backend (services, models, controllers) but guidelines differ for frontend
+10. **Handle deleted files**: Do NOT create inline comments for deleted files as they cause errors
+11. **Output format**: Only show concise summary with PR link - user can see full review on GitHub
+12. **Use side parameter**: Use `side: "RIGHT"` for comments on new/modified code (most common case)
 
 ## Resources
 
 - **[review-guidelines.md](references/review-guidelines.md)**: Detailed level assignment criteria, review checklists, and common issue patterns
-- **[pr-comment-guide.md](references/pr-comment-guide.md)**: GitHub API usage for posting inline and summary review comments
+- **[pr-comment-guide.md](references/pr-comment-guide.md)**: GitHub MCP tools usage for posting inline and summary review comments
 
 ## Example Usage
 
 **User:** "현재 브랜치 변경사항에 대한 코드리뷰해줘"
 
 **Workflow:**
-1. Run `git diff` to see changes (use appropriate base branch like develop or main)
-2. Read CLAUDE.md for project guidelines
-3. Analyze each changed file for bugs, architecture issues, and test coverage
-4. Assign levels (p1-p4, Q) based on severity
-5. Write review comments in Korean with level templates
-6. Immediately create draft review on PR via GitHub API
-7. Provide PR review link to user
+1. Load GitHub MCP tools via ToolSearch
+2. Run `git diff` to see changes (use appropriate base branch like develop or main)
+3. Read CLAUDE.md for project guidelines
+4. Analyze each changed file for bugs, architecture issues, and test coverage
+5. Assign levels (p1-p4, Q) based on severity
+6. Write review comments in Korean with level templates
+7. Create pending review using `mcp__github__pull_request_review_write`
+8. Add inline comments using `mcp__github__add_comment_to_pending_review`
+9. Provide PR review link to user
 
 **Expected Output:**
 ```
