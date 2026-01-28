@@ -1,6 +1,6 @@
 ---
 name: auto-pr
-description: Automatically create GitHub pull requests by analyzing commit history and code changes. Use this skill when the user explicitly requests to create a PR (e.g., "/pr", "PR 만들어줘", "create a pull request", "make a PR"). This skill analyzes all commits in the current branch, examines code changes, generates PR content following the project's template format, and creates the PR using gh CLI.
+description: Automatically create GitHub pull requests by analyzing commit history and code changes. Use this skill when the user explicitly requests to create a PR (e.g., "/pr", "PR 만들어줘", "create a pull request", "make a PR"). This skill analyzes all commits in the current branch, examines code changes, generates PR content following the project's template format, and creates the PR using GitHub MCP tools.
 ---
 
 # Auto PR
@@ -13,14 +13,11 @@ Follow these steps sequentially when this skill is invoked:
 
 ### 1. Check Prerequisites
 
-Verify that gh CLI is available and authenticated:
+This skill uses GitHub MCP tools for PR creation. Ensure the `mcp__github__create_pull_request` tool is available.
 
-```bash
-gh --version
-gh auth status
-```
-
-If gh is not installed or not authenticated, inform the user and provide installation/authentication instructions.
+Use ToolSearch to load the required GitHub MCP tools:
+- `mcp__github__create_pull_request` - For creating the PR
+- `mcp__github__pull_request_read` - For verifying PR creation
 
 ### 2. Analyze Current Branch
 
@@ -134,45 +131,67 @@ git push
 
 ### 7. Create PR
 
-Use gh CLI to create the PR with the generated content:
+Use the GitHub MCP tool to create the PR with the generated content.
+
+First, extract the repository owner and name from the remote URL:
 
 ```bash
-gh pr create \
-  --base <base-branch> \
-  --head <current-branch> \
-  --title "PR Title" \
-  --body "$(cat <<'EOF'
-PR Body Content Here
-EOF
-)"
+git remote get-url origin | sed -E 's/.*[:/]([^/]+)\/([^/.]+)(\.git)?$/\1 \2/'
 ```
 
-Always use HEREDOC format for the body to ensure proper formatting with multiple sections.
+Then use `mcp__github__create_pull_request` tool with these parameters:
+- `owner`: Repository owner (extracted from remote URL)
+- `repo`: Repository name (extracted from remote URL)
+- `title`: Generated PR title
+- `head`: Current branch name
+- `base`: Target base branch
+- `body`: Generated PR body content
+
+Example tool call:
+```
+mcp__github__create_pull_request
+  owner: "organization-name"
+  repo: "repository-name"
+  title: "feat(scope): description"
+  head: "feature/branch-name"
+  base: "develop"
+  body: "## 태스크 요약\n..."
+```
 
 ### 8. Return PR URL
 
-After successful PR creation, extract and display the PR URL to the user:
-
-```bash
-gh pr view --json url -q .url
-```
-
-Show the user:
-- Success message
-- PR URL
+The `mcp__github__create_pull_request` tool returns the created PR information including:
 - PR number
+- PR URL (html_url)
+- PR state
+
+Display to the user:
+- Success message
+- PR URL from the response
+- PR number from the response
+
+If you need additional PR details, use `mcp__github__pull_request_read` with method `get`:
+```
+mcp__github__pull_request_read
+  method: "get"
+  owner: "organization-name"
+  repo: "repository-name"
+  pullNumber: <pr-number>
+```
 
 ## Important Notes
 
 - **Always analyze ALL commits** in the branch, not just the most recent one
 - **Read the full diff** to understand the actual changes, don't rely only on commit messages
-- **Use HEREDOC format** for PR body to preserve formatting
+- **Use GitHub MCP tools** - Always use `mcp__github__create_pull_request` for PR creation instead of gh CLI
+- **Load tools first** - Use ToolSearch to load the GitHub MCP tools before calling them
 - **Check for test files** to automatically check the test checklist item
 - **Keep descriptions concise** but comprehensive - synthesize multiple commits into coherent narrative
 - **Preserve Korean template headers** - don't translate them to English
-- **Handle errors gracefully** - if gh command fails, show the error and suggest solutions
+- **Handle errors gracefully** - if MCP tool call fails, show the error and suggest solutions
 - **Clean working tree** - ensure all changes are committed before creating PR
 - **Follow Conventional Commits** in PR title for consistency
+- **Extract repo info from git remote** - Parse owner and repo name from `git remote get-url origin`
 
 ## Reference Files
 
